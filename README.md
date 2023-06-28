@@ -13,14 +13,15 @@ Sex x Stress repository
 ├── README.md 
 └── code
     ├── scRNA-seq analyses (R scripts)  
-    │    ├── Whole dataset  
-    │    │   ├── Ambient_RNA.R                    # Ambient RNA calculation  
-    │    │   ├── Neurons_reclustring.R            # Neurons reclustering  
-    │    │   └── Distance_backgrounds.R           # Distance of ARS response between backgrounds   
+    │    ├── Whole dataset   
+    │    │   ├── Ambient_RNA.R                      # Ambient RNA calculation  
+    │    │   ├── Function_stability_reclustering.R  # function to calculate stability in neurons reclustering
+    │    │   ├── Neurons_reclustering.R             # Neurons reclustering  
+    │    │   └── Distance_backgrounds.R             # Distance of ARS response between backgrounds   
     │    └── Oligodendrocytes analysis  
-    │         ├── OL_DEGs_clustering.Rmd          # Genes clustering  
-    │         ├── OL_pseudotime.R                 # Pseudotime analysis 
-    │         └── OL_CCInx.R                      # CCInx permutation analysis 
+    │         ├── OL_DEGs_clustering.Rmd            # Genes clustering  
+    │         ├── OL_pseudotime.R                   # Pseudotime analysis 
+    │         └── OL_CCInx.R                        # CCInx permutation analysis 
     │  
     └── RNAscope analysis (python and groovy scripts)  
         ├── RNAscope_processing_part1_images_preparation.groovy         # Images preparation (groovy)  
