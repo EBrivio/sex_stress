@@ -1,0 +1,276 @@
+---
+title: "Oligodendrocytes genes clustering"
+author: "Elena Brivio"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: TRUE
+    toc_float: TRUE
+    code_folding: hide
+
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, fig.height = 12, fig.width = 12)
+```
+# Set-up
+```{r, message=FALSE, warning=FALSE}
+rm(list = ls())
+library(tidyverse)
+library(Seurat)
+library(ggplot2)
+library(tibble)
+library(viridis)
+library(ggrepel)
+library(eulerr)
+library(dendextend)
+library(factoextra)
+
+sessionInfo()
+```
+
+
+# Import Data
+```{r}
+fc <- read.csv("Genes/differential_genes/combined.csv")
+fc <- fc %>% 
+  dplyr::filter(cell_type == "Oligodendrocytes") %>% 
+  separate(sex_exp, into = c("sex", "exp"), remove = F, sep = "_") 
+
+DEG_list <- fc %>% filter(p_val_BH < 0.05) %>% pull(gene) %>% unique()
+
+```
+
+
+# Clustering genes on expression patterns
+## Data Set-up
+I select all gene, combining the 4 conditions and cluster based on the logFC regardless of significance
+```{r}
+set.seed(33)
+
+fc_cl  <- fc %>% 
+  filter(gene %in% DEG_list) %>% 
+  select(gene, sex_exp, avg_logFC, p_val_BH) %>% 
+  group_by(gene) %>% 
+  complete(sex_exp, fill = list(avg_logFC = 0, p_val_BH = 1)) 
+```
+missing values are given a 0 as logFC and 1 as p val. 
+
+Unclustered data
+```{r}
+ggplot(fc_cl, aes(y = reorder(gene, avg_logFC), x = sex_exp, fill = avg_logFC, color = p_val_BH < 0.05)) +
+  geom_tile() +
+  theme(axis.text.y = element_text(size = 2),
+        plot.title = element_text(hjust = 0.5)) +
+  scale_fill_gradient2(low = "#1C7987", mid = "white", high = "#9E2A2B", limits = c(min(fc_cl$avg_logFC), -min(fc_cl$avg_logFC))) +
+  scale_color_manual(values = c("white", "black")) +
+  ggtitle("Unclustered data")
+```
+>Only genes that are DEG in at least one condition are kept.
+
+## Hierarchical clusterization of data - bottom-up
+Transformation to matrix. Only values used for clustering (logFC) are retained
+```{r}
+hc <- fc_cl %>% 
+  select(-p_val_BH) %>% 
+  pivot_wider(id_cols = gene, names_from = sex_exp, values_from = avg_logFC) %>% 
+  column_to_rownames("gene")
+class(hc)
+hc_df <- hc
+hc <- as.matrix(hc)
+```
+Data Scaling
+```{r}
+hc <- scale(hc)
+# head(hc)
+```
+
+## Distance calculation: Euclidean
+```{r}
+# distance matrix. euclidean distance.
+dist_mat <- dist(hc, method = 'euclidean')
+```
+
+
+## Agnes clustering
+Compare linkage methods and compute linkage coefficient. The higher agglomerative coefficient the better.
+```{r}
+m <- c( "average", "single", "complete", "ward")
+names(m) <- c( "average", "single", "complete", "ward")
+```
+
+```{r}
+purrr::map_dbl(m, function(x) {
+  cluster::agnes(dist_mat, method = x)$ac
+})
+```
+> Ward’s method gets us the highest agglomerative coefficient. I look at its dendogram.
+
+```{r}
+hclust_agnes <- cluster::agnes(dist_mat, method = "ward")
+cluster::pltree(hclust_agnes, cex = 0.6, hang = -1, main = "Dendrogram of agnes")
+```
+
+### Dendrogram cutting
+k = 16
+Plot
+```{r}
+avg_dend_obj <- as.dendrogram(hclust_agnes)
+plot.new()
+avg_col_dend <- color_branches(avg_dend_obj, k = 16)
+plot(avg_col_dend, #colored tree based on previous h
+     leaflab = "none",
+     main = "Gene Clustering",
+     ylab = "Height")
+#add the three cluster vectors
+the_bars <- cutree(hclust_agnes, k = 16)
+#this makes the bar
+colored_bars(the_bars, avg_col_dend, sort_by_labels_order = T, y_shift=-0.2, rowLabels = "k = 16", cex.rowLabels=0.7, )
+```
+
+```{r}
+cut_dendrogram <- cutree(hclust_agnes, k = 16)
+```
+
+
+## hclust Clustering
+Linkage method chosen is Ward based on previous analysis
+```{r}
+hclust_hclust <- hclust(dist_mat, method = 'ward.D2')
+plot(hclust_hclust)
+```
+
+### Dendrogram cutting
+k = 16
+Plot
+```{r}
+avg_dend_obj <- as.dendrogram(hclust_hclust)
+plot.new()
+avg_col_dend <- color_branches(avg_dend_obj, k = 16)
+plot(avg_col_dend, #colored tree based on previous h
+     leaflab = "none",
+     main = "Gene Clustering",
+     ylab = "Height")
+#add the three cluster vectors
+the_bars <- cutree(hclust_hclust, k = 16)
+#this makes the bar
+colored_bars(the_bars, avg_col_dend, sort_by_labels_order = T, y_shift=-0.2, rowLabels = "k = 16", cex.rowLabels=0.7, )
+
+```
+
+# Clusters plots
+
+```{r}
+# Create two dendrograms
+dend1 <- as.dendrogram(hclust_agnes)
+dend2 <- as.dendrogram(hclust_hclust)
+
+tanglegram(dend1, dend2,
+           highlight_distinct_edges = T, # Turn-off dashed lines
+           common_subtrees_color_lines = FALSE, # Turn-off line colors
+           common_subtrees_color_branches = F, # Color common branches 
+          )
+```
+
+```{r}
+sum(cut_dendrogram != the_bars)
+```
+
+> agnes and hclust create very similar but not identical dendograms, but the clustering is identical. 
+
+> hclust is chosen.
+
+
+```{r}
+clValid::dunn(dist_mat, cut_dendrogram) 
+```
+
+> Dunn's index should be maximized, it represents clusters closed within and far outside (the ratio between the minimum inter-cluster distances to the maximum intra-cluster diameter).
+
+```{r}
+hc_df$cluster <- as.integer(cut_dendrogram)
+```
+
+```{r}
+hc_df %>% group_by(cluster) %>% summarise(n = n())
+```
+
+# Plots
+
+```{r}
+hc_df1 <- hc_df %>%
+  rownames_to_column("gene") %>% 
+  pivot_longer(cols = c(female_ars, female_cms, male_ars, male_cms), names_to = "sex_exp", values_to = "logFC")
+```
+
+
+```{r, fig.height = 12, fig.width = 12}
+hc_df1 %>% 
+  ggplot(aes(x = sex_exp, y = logFC, group = gene, color = gene)) +
+  geom_line(alpha = 0.5) +
+  stat_summary(aes(group = cluster, fill = sex_exp),
+               geom = "bar",
+               fun = "median", color = "black", alpha = 0.7
+               
+  ) +
+  facet_wrap(vars(cluster), scales = "free") +
+  
+  scale_fill_manual(values = col_degs) +
+  theme_minimal() +
+  theme(text = element_text(family = "Helvetica"),
+        legend.position = "none", 
+        axis.title.x = element_blank(), 
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 6),
+        plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+hc_df1 <- hc_df1 %>% 
+  arrange(cluster) %>% 
+  mutate(gene = factor(gene, levels = unique(gene))) 
+```
+
+# Heatmap
+
+### Pheatmap
+hclust dynamic cut
+```{r}
+my_gene_col <- cut_dendrogram
+my_gene_col <- data.frame(my_gene_col) %>% rename("clusters"="my_gene_col") %>% 
+  rownames_to_column("gene") %>% 
+  mutate(clusters = factor(clusters)) %>% 
+  column_to_rownames("gene")
+colnames(hc) <- plyr::mapvalues(colnames(hc), from = colnames(hc), to = c("Baseline ARS\nFemale", "CMS ARS\nFemale", "Baseline ARS\nMale", "CMS ARS\n Male"))
+
+set.seed(72)
+
+paletteLength <- 100
+colors_scale <- rev(hcl.colors(paletteLength, "RdBu"))
+m <- max(abs(hc))
+
+myBreaks <- c(seq(-m, 0, 
+                  length.out = ceiling(paletteLength/2) + 1), 
+              seq(m/paletteLength, m,
+                  length.out = floor(paletteLength/2)))
+
+
+pheatmap::pheatmap(mat = hc, 
+                   scale = "none", 
+                   clustering_method = "ward.D",
+                   cluster_rows = hclust_hclust, 
+                   cutree_rows = max(cut_dendrogram),
+                   cluster_cols = F, 
+                   annotation_row = my_gene_col,
+                   color = colors_scale,
+                   # annotation_colors = my_colour, 
+                   fontsize_row = 2, 
+                   legend_breaks = seq(-8, 8, 2),
+                   legend_labels = seq(-8, 8, 2),
+                   breaks = myBreaks, 
+                   fontsize = 9, 
+                   angle_col = 90, 
+                   filename = paste0(output_images, "Pheatmap.png"),
+                   width = 7, height = 8
+                   )
+
+```
