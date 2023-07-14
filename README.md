@@ -5,7 +5,7 @@
 This repository contains the scripts for the original analysis from the manuscript.
 
 # Web App
-This dataset is freely explorable at the following [link](https://male-female-stress.weizmann.ac.il/shinyApp/)
+This dataset is freely explorable at the following [link](https://male-female-stress.weizmann.ac.il/shinyApp/).
 
 # Content structure
 <pre>
